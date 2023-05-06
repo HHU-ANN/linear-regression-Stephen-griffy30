@@ -11,22 +11,41 @@ except ImportError as e:
     from scipy.optimize import minimize_scalar
 
 def ridge(data, alpha):
-    x, y = data[:, :-1], data[:, -1]
-    n, p = x.shape
-    xtx = np.dot(x.T, x)
-    ridge_term = alpha * np.identity(p)
-    ridge_term[0, 0] = 0 # Don't regularize the intercept
-    xty = np.dot(x.T, y)
-    beta = np.dot(inv(xtx + ridge_term), xty)
-    return np.dot(data[:, :-1], beta)
-
+    X, y = data[:, :-1], data[:, -1]
+    X_T = X.T
+    n, p = X.shape
+    I = np.identity(p)
+    beta = np.linalg.inv(X_T @ X + alpha * I) @ X_T @ y
+    return X @ beta
+    
 def lasso(data, alpha):
-    x, y = data[:, :-1], data[:, -1]
-    n, p = x.shape
-    xtx = np.dot(x.T, x)
-    xty = np.dot(x.T, y)
+    X, y = data[:, :-1], data[:, -1]
+    n, p = X.shape
+    beta = np.zeros(p)
+    w = np.ones(p)
+    X_T = X.T
+    converged = False
+    while not converged:
+        for j in range(p):
+            beta_except_j = np.delete(beta, j)
+            X_except_j = np.delete(X, j, 1)
+            y_hat = X_except_j @ beta_except_j
+            r_j = X[:, j] @ (y - y_hat)
+            z_j = X[:, j] @ X_except_j
+            soft_t = np.abs(r_j) - alpha / 2
+            if soft_t < 0:
+                beta[j] = 0
+            else:
+                if r_j < 0:
+                    beta[j] = - soft_t / z_j
+                else:
+                    beta[j] = soft_t / z_j
+        if np.linalg.norm(beta - w) < 1e-6:
+            converged = True
+        w = beta.copy()
+    return X @ beta
 
-    def objective(beta):
+def objective(beta):
         return np.sum((y - np.dot(x, beta))**2) + alpha*np.sum(np.abs(beta))
 
     beta_init = np.zeros(p)
@@ -35,9 +54,13 @@ def lasso(data, alpha):
     beta_hat = res.x
     return np.dot(data[:, :-1], beta_hat)
 
-def read_data(path='./data/exp02/'):
-    x = np.load(path + 'X_train.npy')
-    y = np.load(path + 'y_train.npy')
-    data = np.hstack((x, y.reshape(-1, 1)))
-    return data
+def main():
+    path = './data/exp02/'
+    X, y = read_data(path)
+    data = np.concatenate((X, y[:, np.newaxis]), axis=1)
+    alpha = 0.1
+    ridge_result = ridge(data, alpha)
+    lasso_result = lasso(data, alpha)
+    print("Ridge Result:", ridge_result)
+    print("Lasso Result:", lasso_result)
 
